@@ -1,10 +1,11 @@
 /*******************************************************************************
 * File Name:   main.c
 *
-* Description:
+* Description:A program that receives audio data sent from MiVoi software via
+* UART and outputs audio through PWM control from the data.
 *
 * Related Document:
-*
+* None.
 ********************************************************************************
 * Copyright 2019-2024, Cypress Semiconductor Corporation (an Infineon company) or
 * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
@@ -46,6 +47,8 @@
 #include "cy_retarget_io.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <signal.h>
+#include <sys/time.h>
 
 
 /*******************************************************************************
@@ -147,7 +150,7 @@ long map(long x, long in_min, long in_max, long out_min, long out_max) {
 * Function Name: audio_Output
 ********************************************************************************
 * Summary:
-*
+*PWM is generated from the received data and output to the speaker.
 *
 * Parameters:
 *  void
@@ -165,18 +168,21 @@ void audio_Output(void){
 	    	cyhal_pwm_set_duty_cycle(&pwm_control, (float)map(freq[i], 0x00, 0xff, 0, 100),
 	PWM_FREQUENCY);
 	    	cyhal_pwm_start(&pwm_control);
-	    	cyhal_system_delay_us(94);
+	    	cyhal_system_delay_us(111);//
 	    }
 	    cyhal_pwm_stop(&pwm_control);
 	    cyhal_system_critical_section_exit(status);
+	    for(int i=0;i<len;i++)
+	    {
+	    	freq[i]=0x00;
+	    }
 }
 
 /*******************************************************************************
 * Function Name: main
 ********************************************************************************
 * Summary:
-* This is the main function for the CPU. It configures the PWM and puts the CPU
-* in Sleep mode to save power.
+* This is the main function for the CPU. It configures the PWM and UART.
 *
 * Parameters:
 *  void
@@ -214,32 +220,10 @@ int main(void)
                                  CY_RETARGET_IO_BAUDRATE);
     handle_error(result);
 
-    /* \x1b[2J\x1b[;H - ANSI ESC sequence for clear screen */
-    printf("\x1b[2J\x1b[;H");
-    printf("****************** "
-           "HAL: PWM square wave "
-           "****************** \r\n\n");
-
-    /* In this example, PWM output is routed to the user LED on the kit.
-       See HAL API Reference document for API details. */
-
     /* Initialize the PWM */
-    result = cyhal_pwm_init(&pwm_control,P10_4 , NULL);//CYBSP_USER_LED
-    check_status("API cyhal_pwm_init failed with error code", result);
+    result = cyhal_pwm_init(&pwm_control,P10_4 , NULL);
 
-    /* Set the PWM output frequency and duty cycle */
-    //result = cyhal_pwm_set_duty_cycle(&pwm_control, PWM_DUTY_CYCLE,
-      //                                PWM_FREQUENCY);
-    check_status("API cyhal_pwm_set_duty_cycle failed with error code", result);
-
-    /* Start the PWM */
-    //result = cyhal_pwm_start(&pwm_control);
-    check_status("API cyhal_pwm_start failed with error code", result);
-
-    printf("PWM started successfully. Entering the sleep mode...\r\n");
-//znda();
     for(;;){
-
     	cyhal_uart_getc(&cy_retarget_io_uart_obj,
             &read_data, 0);
     	if(read_data==0x53){
@@ -264,78 +248,74 @@ int main(void)
     			    			    			    					case 2:
     			    			    			    						freq[len+buffer_f]=0x4e;
     			    			    			    						freq[len+buffer_f-1]=0x45;
-    			    			    			    						    			    			    			    						buffer_f=0;
-    			    			    			    						    			    			    			    						break;
+    			    			    			    						buffer_f=0;
+    			    			    			    						break;
     			    			    			    					case 3:
     			    			    			    						freq[len+buffer_f]=0x44;
     			    			    			    						freq[len+buffer_f-2]=0x45;
     			    			    			    						freq[len+buffer_f-1]=0x4e;
-    			    			    			    						    			    			    			    						buffer_f=0;
-    			    			    			    						    			    			    			    						break;
+    			    			    			    					    buffer_f=0;
+    			    			    			    						break;
     			    			    			    					case 4:
     			    			    			    						freq[len+buffer_f]=0x49;
     			    			    			    						freq[len+buffer_f-3]=0x45;
     			    			    			    						freq[len+buffer_f-2]=0x4e;
     			    			    			    						freq[len+buffer_f-1]=0x44;
-    			    			    			    						    			    			    			    						buffer_f=0;
-    			    			    			    						    			    			    			    						break;
+    			    			    			    						buffer_f=0;
+    			    			    			    						break;
     			    			    			    					case 5:
     			    			    			    						freq[len+buffer_f]=0x4e;
     			    			    			    						freq[len+buffer_f-4]=0x45;
     			    			    			    						freq[len+buffer_f-3]=0x4e;
     			    			    			    						freq[len+buffer_f-2]=0x44;
     			    			    			    						freq[len+buffer_f-1]=0x49;
-    			    			    			    						    			    			    			    						buffer_f=0;
-    			    			    			    						    			    			    			    						break;
-
+    			    			    			    						buffer_f=0;
+    			    			    			    						break;
     			    			    			    				}
 
-    			    			    			    				    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			            &read_data, 0);
-
+    			    			    			    				cyhal_uart_getc(&cy_retarget_io_uart_obj,
+    			    			    			    	    			            &read_data, 0);
 
     			    			    			    				if(read_data==0x45){
     			    			    			    					buffer_f++;
+    			    			    			    				    cyhal_uart_getc(&cy_retarget_io_uart_obj,
+    			    			    			    						            &read_data, 0);
+
+    			    			    			    					if(read_data==0x4e){
+    			    			    			   		    				buffer_f++;
+    			    		 				    			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
+    		    			    				    			    			            &read_data, 0);
+
+    			    		 				    			    			if(read_data==0x44){
+    			    			    			    		    				buffer_f++;
+    			    			    			     			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
+    			    			    			  	    			    			            &read_data, 0);
+
+    			    			    			    			    			if(read_data==0x49){
+    			    			    			    			    				buffer_f++;
     			    			    			    				    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			            &read_data, 0);
+    			    			    			    		   			    			            &read_data, 0);
 
     			    			    			    				    			if(read_data==0x4e){
     			    			    			    				    				buffer_f++;
-    			    			    			    				    			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			    			            &read_data, 0);
+    			    			    			    		  			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
+    			    			    			    		    			    			            &read_data, 0);
 
-    			    			    			    				    			    			if(read_data==0x44){
-    			    			    			    				    			    				buffer_f++;
-    			    			    			    				    			    			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			    			    			            &read_data, 0);
-
-    			    			    			    				    			    			    			if(read_data==0x49){
-    			    			    			    				    			    			    				buffer_f++;
-    			    			    			    				    			    			    			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			    			    			    			            &read_data, 0);
-
-    			    			    			    				    			    			    			    			if(read_data==0x4e){
-    			    			    			    				    			    			    			    				buffer_f++;
-    			    			    			    				    			    			    			    			    			cyhal_uart_getc(&cy_retarget_io_uart_obj,
-    			    			    			    				    			    			    			    			    			            &read_data, 0);
-
-    			    			    			    				    			    			    			    			    			if(read_data==0x47){
-    			    			    			    				    			    			    			    			    				buffer_f=0;
-    			    			    			    				    			    			    			    			    			    			break;
-    			    			    			    				    			    			    			    			    			    		}
-    			    			    			    				    			    			    			    			    		}
-    			    			    			    				    			    			    			    		}
-    			    			    			    				    			    			    		}
-    			    			    			    				    			    		}
-
-
-    			    			    				    		}
-	    			    			    				len++;
-			    			    				freq[len]=read_data;
- 			    			}
-    			    }
-    			   }
-    			}
+    			    			    			    		   			    			if(read_data==0x47){
+    			    			    			    					    				buffer_f=0;
+    			    			    			    		    			    			break;
+    			    			    			    		    			    		}
+    			    			    			    		   			    		}
+    			    			    			    				    		}
+    			    			    			    			    		}
+    			    			    			    		    		}
+    			    			    			    				}
+    			    			    			    				len++;
+	    			    			    							freq[len]=read_data;
+    			    			    			    			}
+    			    		    					}
+    			    				}
+    				}
     		}
     	}
     	audio_Output();
